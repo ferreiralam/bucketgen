@@ -38,6 +38,7 @@ FUNCS = {
     "files": 78, "uploads": 80, "backup": 88, "backups": 70, "logs": 82,
     "data": 75, "app": 70, "web": 68, "img": 70, "images": 72,
     "public": 76, "private": 65, "bucket": 60, "storage": 65, "s3": 50,
+    "download": 42, "downloads": 42, "report": 42, "reports": 42
 }
 # Funcoes PT-BR (diferencial pro escopo BR)
 FUNCS_PTBR = {
