@@ -1,124 +1,169 @@
 # bucketgen
 
-Smart wordlist generator for cloud bucket enumeration (S3 / GCS / Azure Blob).
+Gerador inteligente de wordlists para enumeração de buckets em nuvem (S3 / GCS / Azure Blob).
 
-`bucketgen` takes one or more target names and produces a **probability-ranked**
-wordlist of likely bucket names. The most probable candidates appear first, so
-when you feed the list into a resolver with rate limits, the realistic hits show
-up in the first few hundred lines instead of being buried in noise.
+O `bucketgen` recebe um ou mais nomes-alvo e gera uma wordlist **ranqueada por
+probabilidade** de nomes prováveis de bucket. Os candidatos mais prováveis vêm
+primeiro — então quando você joga a lista num resolver com *rate limit*, os
+*hits* reais aparecem nas primeiras centenas de linhas em vez de ficarem
+enterrados no meio do ruído.
 
-## Why
+> 🇬🇧 English version: [README.en.md](README.en.md)
 
-Generic permutation tools treat every term equally and combine everything with
-everything, producing huge low-quality lists. `bucketgen` separates **primary**
-terms (your actual target) from **complementary** terms (modifiers like regions
-or product names), scores each candidate by patterns seen in real-world buckets,
-and sorts the output accordingly.
+## Por quê
 
-## Features
+Ferramentas genéricas de permutação tratam todos os termos como iguais e
+combinam tudo com tudo, gerando listas enormes e de baixa qualidade. O
+`bucketgen` separa os termos **principais** (o alvo real) dos termos
+**complementares** (modificadores como região ou nome de produto), pontua cada
+candidato segundo padrões vistos em buckets reais, e ordena a saída por isso.
 
-- **Probability ranking** — candidates scored by how often the pattern appears
-  in real buckets (`prd-`, `-backup`, `-assets` rank high; `tst-`, `demo-` low).
-- **Primary vs. complementary terms** — primaries get full wordlists; modifiers
-  only attach to a primary (`example-web`), never appear alone.
-- **Composite affixes** — `example-api-prd`, `example-static-assets`, `prd-example-backup`.
-- **AWS regions** — `sa-east-1` prioritized, plus the common US/EU regions.
-- **Years** — `example-2024`, `example-backup-2023`.
-- **Account-id placeholder** — emits `example-ACCOUNTID` for later `sed` substitution.
-- **PT-BR functions** — `boletos`, `arquivos`, `documentos`, `notasfiscais`...
-  (useful for Brazilian-scope targets that English wordlists miss).
-- **External wordlist** — plug your own recon terms via `--wordlist`.
-- **Interactive mode** — run with no arguments and it prompts for the essentials.
-- **S3 name validation** — `--valid-only` keeps only RFC-valid bucket names.
+## Recursos
 
-## Requirements
+- **Ranking por probabilidade** — candidatos pontuados pela frequência do padrão
+  em buckets reais (`prd-`, `-backup`, `-assets` pontuam alto; `tst-`, `demo-` baixo).
+- **Termos principais x complementares** — principais geram wordlist completa;
+  modificadores só se anexam a um principal (`example-web`), nunca isolados.
+- **Afixos compostos** — `example-api-prd`, `example-static-assets`, `prd-example-backup`.
+- **Regiões AWS** — `sa-east-1` priorizado, mais as regiões US/EU comuns.
+- **Anos** — `example-2024`, `example-backup-2023`.
+- **Placeholder de account-id** — emite `example-ACCOUNTID` para substituição posterior.
+- **Funções em PT-BR** — `boletos`, `arquivos`, `documentos`, `notasfiscais`...
+  (útil para alvos de escopo brasileiro que wordlists em inglês não cobrem).
+- **Wordlist externa** — injete seus próprios termos de recon via `--wordlist`.
+- **Modo interativo** — rode sem argumentos e ele pergunta o essencial.
+- **Validação de nome S3** — `--valid-only` mantém só nomes válidos de bucket.
 
-Python 3.6+ (standard library only, no dependencies).
+## Requisitos
 
-## Usage
+Python 3.6+ (apenas biblioteca padrão, sem dependências externas).
+
+## Uso
 
 ```bash
-# single primary target
+# um único alvo principal
 python3 bucketgen.py example
 
-# primaries (-t) + complementary modifiers (-m)
+# principais (-t) + modificadores complementares (-m)
 python3 bucketgen.py -t example google -m web cloud "data lake"
 
-# cap output and keep only valid S3 names
+# limita a saída e mantém só nomes S3 válidos
 python3 bucketgen.py -t example -m web --max 5000 --valid-only
 
-# show scores (debug / tuning)
+# mostra os scores (debug / calibração)
 python3 bucketgen.py example --scores | head -30
 
-# write to file
+# salva em arquivo
 python3 bucketgen.py -t example google -m web -o buckets.txt
 
-# bring your own recon terms
+# usa seus próprios termos de recon
 python3 bucketgen.py example --wordlist recon_extra.txt
 
-# interactive mode (asks for primary + complementary terms)
+# modo interativo (pergunta termos principais + complementares)
 python3 bucketgen.py
 ```
 
-### Primary vs. complementary
+### Principais x complementares
 
-| Term type | Flag | Behaviour | Example output |
-|-----------|------|-----------|----------------|
-| Primary | positional or `-t/--target` | full wordlist on its own | `prd-example`, `example-backup` |
-| Complementary | `-m/--mod` | only attaches to a primary | `example-web`, `prd-example-web` |
+| Tipo de termo | Flag | Comportamento | Saída de exemplo |
+|---------------|------|---------------|------------------|
+| Principal | posicional ou `-t/--target` | wordlist completa sozinho | `prd-example`, `example-backup` |
+| Complementar | `-m/--mod` | só se anexa a um principal | `example-web`, `prd-example-web` |
 
-A complementary term is **never** emitted by itself — no `prd-web`, no
-`web-backup`. It only exists glued to a primary.
+Um termo complementar **nunca** é emitido sozinho — nada de `prd-web` ou
+`web-backup`. Ele só existe colado a um principal.
 
 ### Flags
 
-| Flag | Default | Description |
-|------|---------|-------------|
-| `-t`, `--target` | — | Primary/target term(s). |
-| `-m`, `--mod` | — | Complementary term(s); only attach to a primary. |
-| `-o`, `--output` | stdout | Output file. |
-| `--max N` | 0 (unlimited) | Keep only the top N ranked entries. |
-| `--valid-only` | off | Keep only valid S3 bucket names. |
-| `--wordlist FILE` | — | Extra affixes, one per line (`#` for comments). |
-| `--scores` | off | Print the score next to each entry. |
-| `--no-combine` | on | Disable combining terms. |
-| `--no-composite` | on | Disable composite affixes. |
-| `--no-regions` | on | Disable AWS region mutations. |
-| `--no-years` | on | Disable year mutations. |
-| `--no-account` | on | Disable the account-id placeholder. |
-| `--no-ptbr` | on | Disable Portuguese function words. |
+| Flag | Padrão | Descrição |
+|------|--------|-----------|
+| `-t`, `--target` | — | Termo(s) principal(is)/alvo. |
+| `-m`, `--mod` | — | Termo(s) complementar(es); só anexam a um principal. |
+| `-o`, `--output` | stdout | Arquivo de saída. |
+| `--max N` | 0 (ilimitado) | Mantém só as N melhores entradas ranqueadas. |
+| `--valid-only` | off | Mantém só nomes de bucket S3 válidos. |
+| `--wordlist ARQUIVO` | — | Afixos extras, um por linha (`#` para comentários). |
+| `--scores` | off | Imprime o score ao lado de cada entrada. |
+| `--no-combine` | on | Desativa combinação de termos. |
+| `--no-composite` | on | Desativa afixos compostos. |
+| `--no-regions` | on | Desativa mutações de região AWS. |
+| `--no-years` | on | Desativa mutações de ano. |
+| `--no-account` | on | Desativa o placeholder de account-id. |
+| `--no-ptbr` | on | Desativa as funções em português. |
 
-### Account-id placeholder
+### Placeholder de account-id
 
-When `--no-account` is **not** set, the tool emits candidates containing the
-literal string `ACCOUNTID`:
+Quando `--no-account` **não** está setado, a ferramenta emite candidatos com a
+string literal `ACCOUNTID`:
 
 ```
 example-ACCOUNTID
 ACCOUNTID-example
 ```
 
-Once you know the real 12-digit AWS account id, substitute it across the list:
+Quando você descobrir o account-id real (12 dígitos) da AWS, substitua em toda
+a lista:
 
 ```bash
 sed 's/ACCOUNTID/123456789012/g' buckets.txt > buckets-final.txt
 ```
 
-## Example pipeline
+## Integração com Nuclei
+
+A wordlist gerada se encaixa direto nos *templates* de enumeração de bucket do
+[nuclei-templates](https://github.com/projectdiscovery/nuclei-templates), que
+recebem a lista pela variável `wordlist`.
 
 ```bash
-# generate, keep top 10k valid names, resolve
-python3 bucketgen.py -t example google -m web --valid-only --max 10000 -o wl.txt
-# then feed wl.txt into your bucket resolver of choice
+# 1) gere a wordlist (top 10k válidos é um bom ponto de partida)
+python3 bucketgen.py -t example google -m web --valid-only --max 10000 -o buckets.txt
+
+# 2) AWS S3
+nuclei -t ~/nuclei-templates/cloud/enum/aws-s3-bucket-enum.yaml \
+  -var wordlist=buckets.txt -esc -lfa
+
+# 3) GCP Storage
+nuclei -t ~/nuclei-templates/cloud/enum/gcp-bucket-enum.yaml \
+  -var wordlist=buckets.txt -esc -lfa
 ```
 
-## Legal
+**O que cada flag faz:**
 
-This tool is intended for **authorized security testing only**. Use it solely
-against assets you own or are explicitly permitted to test (bug bounty scope,
-signed engagement, your own infrastructure). The author is not responsible for
-misuse. Always confirm scope before enumerating.
+- `-t` — caminho do *template* de enumeração (S3 ou GCP).
+- `-var wordlist=buckets.txt` — passa a wordlist do `bucketgen` para a variável
+  `wordlist` que o *template* consome. Use o mesmo arquivo nos dois.
+- `-esc` (`-enable-self-contained`) — habilita *templates* self-contained; os
+  *templates* de enum de cloud são *code/self-contained* e não rodam sem isso.
+- `-lfa` (`-allow-local-file-access`) — permite o acesso a arquivo local
+  necessário para o *template* ler a wordlist do disco.
 
-## License
+> **Atenção:** confira o caminho dos *templates*. Em versões recentes do
+> nuclei-templates os arquivos de enum de cloud podem estar em
+> `cloud/enum/` ou em outro subdiretório — ajuste o `-t` conforme a sua árvore:
+> `find ~/nuclei-templates -name '*bucket-enum*'`
 
-MIT — see [LICENSE](LICENSE).
+### Dica de fluxo
+
+```bash
+# gera, ranqueia, corta no topo e já enumera S3 + GCP na sequência
+python3 bucketgen.py -t example -m web cloud --valid-only --max 8000 -o buckets.txt
+for tpl in aws-s3-bucket-enum gcp-bucket-enum; do
+  nuclei -t ~/nuclei-templates/cloud/enum/$tpl.yaml -var wordlist=buckets.txt -esc -lfa
+done
+```
+
+Como a saída do `bucketgen` já vem ranqueada, mesmo cortando com `--max` você
+mantém os candidatos de maior probabilidade — bom para economizar requisições
+quando o alvo tem *rate limit* ou quando a chamada de API tem custo.
+
+## Aviso legal
+
+Esta ferramenta destina-se **somente a testes de segurança autorizados**. Use
+apenas contra ativos que você possui ou tem permissão explícita para testar
+(escopo de *bug bounty*, contrato assinado, sua própria infraestrutura). O autor
+não se responsabiliza por uso indevido. Sempre confirme o escopo antes de
+enumerar.
+
+## Licença
+
+MIT — veja [LICENSE](LICENSE).
